@@ -1,0 +1,179 @@
+pipeline {
+    agent any
+
+    parameters {
+    string(name: 'BRANCH', defaultValue: 'main', description: 'Git 分支')
+    string(name: 'SCRIPTS', defaultValue: 'sample1.py', description: 'python脚本')
+    string(name: 'EMAIL_TO', defaultValue: 'fdujuan29@163.com', description: 'Email address(es) to notify build result')
+  }
+    stages {
+        stage('Set Build Name') {
+            steps {
+                script {
+                    // 使用环境变量获取用户信息（不需要特殊权限）
+                    def user = env.CHANGE_AUTHOR ?:
+                              env.GIT_AUTHOR_NAME ?:
+                              env.BUILD_USER_ID ?:
+                              "SYSTEM"
+
+                    def timestamp = new Date().format('yyyyMMdd-HHmmss')
+
+                    // 设置构建显示名称
+                    currentBuild.displayName = "#${currentBuild.number}-${user}-${timestamp}"
+                    currentBuild.description = "构建用户: ${user}, 时间: ${timestamp}"
+
+                    echo "构建名称设置为: ${currentBuild.displayName}"
+                }
+            }
+        }
+
+
+        stage('Stage 1') {
+            steps {
+                echo 'Hello world!'
+            }
+        }
+
+        stage('Checkout') {
+              steps {
+                  echo "当前目录: ${pwd()}"
+                  dir('/var/jenkins_home/workspaces') {
+                            echo "进入目录: ${pwd()}"
+                            sh 'ls -la'  // 这个命令在 /var/jenkins_home/workspaces 中执行
+                            deleteDir() // 清理工作区，避免脏文件影响
+                            git(
+                                url: 'git@github.com:azeala29/sampleProject.git',
+                                credentialsId: '1e75202c-9852-440c-9d5e-10d709da7151', // 这里填写你在 Jenkins 中创建的凭证 ID
+                                branch: 'main'
+                            )
+                            echo "当前目录: ${pwd()}"
+                            sh 'ls -la'
+                            script {
+                              if (!params.SCRIPTS?.trim()) {
+                                error 'SCRIPTS 不能为空，请按行填入脚本路径'
+                              }
+
+                              List<String> scripts = params.SCRIPTS
+                                .readLines()
+                                .collect { it.trim() }
+                                .findAll { it }
+
+                              if (scripts.isEmpty()) {
+                                error '没有有效的脚本条目'
+                              }
+
+                              scripts.each { String scriptPath ->
+                                echo "Running: ${scriptPath}"
+                                if (!fileExists(scriptPath)) {
+                                  error "脚本不存在: ${scriptPath}"
+                                }
+                                sh 'python3 --version'
+                                sh """python3 ${scriptPath}"""
+                              }
+                            }
+                    }
+             }
+        }
+    }
+
+      post {
+    always {
+      script {
+        def subject = "Jenkins Job: ${env.JOB_NAME} #${env.BUILD_NUMBER} - ${currentBuild.currentResult}"
+        def body = """
+Job: ${env.JOB_NAME}
+Build: #${env.BUILD_NUMBER}
+Result: ${currentBuild.currentResult}
+Pool: ${params.AGENT_POOL_LABEL}
+Scripts: ${params.SCRIPTS}
+Build URL: ${env.BUILD_URL}
+"""
+        if (params.EMAIL_TO?.trim()) {
+          try {
+            emailext subject: subject,
+                     body: body,
+                     to: params.EMAIL_TO
+          } catch (Throwable t) {
+            try {
+              mail subject: subject,
+                   body: body,
+                   to: params.EMAIL_TO
+            } catch (Throwable t2) {
+              echo "Email notification failed: ${t2.message}"
+            }
+          }
+        } else {
+          echo 'EMAIL_TO is empty, skip email notification.'
+        }
+      }
+
+
+    script {
+    // 对于QQ邮箱/163邮箱，需要特别注意
+    def emailConfig = [
+        to: "fdujuan29@163.com",  // 或者 recipient@163.com
+        from: "fengdj@daweimail.com",  // 必须使用已认证的邮箱
+        smtp: "smtp.163.com",     // 或者 smtp.163.com
+        port: "465",
+        useSSL: true
+    ]
+
+    // 在Jenkins系统配置中设置好SMTP后
+    emailext (
+        subject: "测试邮件 - 使用授权码认证",
+        body: """
+            <p>这是一封测试邮件，确保：</p>
+            <ul>
+                <li>使用授权码而非密码</li>
+                <li>发件人地址与认证邮箱一致</li>
+                <li>SMTP服务器和端口正确</li>
+            </ul>
+        """,
+        to: emailConfig.to,
+        from: emailConfig.from,
+        mimeType: "text/html"
+    )
+}
+
+
+                script {
+                    // 企业邮箱配置
+                    def emailConfig = [
+                        // 使用公司域名邮箱
+                        to: 'team@your-company.com',
+                        from: 'jenkins@your-company.com',  // 必须使用公司域名
+                        subject: "构建通知: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                        // 简单的纯文本内容，避免被拦截
+                        body: """
+项目名称: ${env.JOB_NAME}
+构建编号: ${env.BUILD_NUMBER}
+构建状态: 成功
+构建时间: ${new Date().format('yyyy-MM-dd HH:mm:ss')}
+构建链接: ${env.BUILD_URL}
+
+此邮件由 Jenkins 自动发送。
+                        """
+                    ]
+
+                    emailext (
+                        subject: emailConfig.subject,
+                        body: emailConfig.body,
+                        to: emailConfig.to,
+                        from: emailConfig.from,
+                        mimeType: 'text/plain',  // 使用纯文本，避免HTML问题
+                        replyTo: 'noreply@your-company.com'
+                    )
+                }
+
+
+
+
+
+
+
+    }
+  }
+
+
+
+}

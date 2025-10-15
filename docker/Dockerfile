@@ -12,6 +12,13 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
+# 复制 requirements 文件
+COPY requirements.txt .
+
+# 安装依赖
+RUN pip install --no-cache-dir -r requirements.txt
+
+
 # 切换回 jenkins 用户
 USER jenkins
 
